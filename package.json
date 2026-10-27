@@ -1,0 +1,16 @@
+{
+  "name": "islad-island-worlds",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ISLAD island game with persistent invite-link worlds",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

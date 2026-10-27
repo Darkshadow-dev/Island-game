@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#101912">
+  <meta name="description" content="ISLAD — a large 3D island exploration sandbox.">
+  <title>ISLAD — Island Worlds</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="css/main.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <script defer src="js/main.js"></script>
+</head>
+<body>
+  <div id="scene" aria-label="3D island world"></div>
+  <div id="worldFade"></div>
+  <main id="frontMenu" class="menu-shell">
+    <section id="homeView" class="menu-view home-view">
+      <div class="brand-mark"><span class="brand-glyph">I</span><span>WHITEARROWE PRESENTS</span></div>
+      <div class="home-copy">
+        <p class="kicker">A quiet world, waiting</p>
+        <h1>ISLAD<span class="title-period">.</span></h1>
+        <p class="home-lead">A vast island shaped by the map. Walk from warm shores to the high mountain spine. Your worlds stay yours.</p>
+        <div class="home-actions">
+          <button id="startButton" class="button button-primary">Start</button>
+          <button id="settingsButton" class="button button-ghost">Settings</button>
+          <button id="quitButton" class="button button-ghost">Quit</button>
+        </div>
+      </div>
+      <div class="home-footer"><span>447 km × 447 km island</span><span>Singleplayer · up to 4 players by link</span></div>
+      <div class="grain"></div>
+    </section>
+    <section id="worldsView" class="menu-view panel-view" hidden>
+      <div class="panel-top"><button class="back-button" data-back="homeView">← Back</button><div class="panel-tag">YOUR ISLANDS</div></div>
+      <header class="panel-heading"><p class="kicker">Start</p><h2>Choose a world</h2><p>Three local save slots. Each island is generated from the reference map.</p></header>
+      <div id="worldSlots" class="world-slots"></div>
+      <div class="join-row"><div><p class="tiny-label">JOIN WITH AN INVITE LINK</p><p class="muted">Anyone with a public link can join. Worlds are limited to four players.</p></div><div class="join-controls"><input id="joinLinkInput" type="url" placeholder="Paste an island link" aria-label="Island invite link"><button id="joinLinkButton" class="button button-small">Join</button></div></div>
+      <div id="serverStatus" class="server-status">Checking world server…</div>
+    </section>
+    <section id="settingsView" class="menu-view panel-view" hidden>
+      <div class="panel-top"><button id="settingsBack" class="back-button">← Back</button><div class="panel-tag">PREFERENCES</div></div>
+      <header class="panel-heading"><p class="kicker">Settings</p><h2>Make it yours</h2><p>Graphics and sound settings are saved on this device.</p></header>
+      <div class="settings-list">
+        <label class="setting-row"><span><strong>Brightness</strong><small>Scene light level</small></span><span class="range-wrap"><input id="brightnessRange" type="range" min="65" max="145" value="108"><output id="brightnessValue">108%</output></span></label>
+        <label class="setting-row"><span><strong>Render distance</strong><small>Lower this to improve mobile performance</small></span><span class="range-wrap"><input id="renderRange" type="range" min="500" max="3000" step="100" value="1400"><output id="renderValue">1,400 m</output></span></label>
+        <label class="setting-row"><span><strong>Sound effects</strong><small>Subtle footsteps and game feedback</small></span><span class="toggle-wrap"><input id="sfxToggle" type="checkbox" checked><span class="toggle-ui"></span><output>ON</output></span></label>
+        <label class="setting-row"><span><strong>Mobile detail cap</strong><small>Reduce detail automatically on phones and tablets</small></span><span class="toggle-wrap"><input id="mobileCapToggle" type="checkbox" checked><span class="toggle-ui"></span><output>AUTO</output></span></label>
+      </div>
+      <p class="save-note">Auto-save: browser storage + a private device save file when supported.</p><div class="save-actions"><button id="exportSaveButton" class="button button-ghost button-small">Download save file</button></div>
+    </section>
+    <section id="pauseView" class="menu-view panel-view pause-view" hidden>
+      <div class="panel-tag">PAUSED</div><h2>Take your time.</h2>
+      <div class="pause-actions"><button id="resumeButton" class="button button-primary">Resume</button><button id="pauseSettingsButton" class="button button-ghost">Settings</button><button id="saveExitButton" class="button button-ghost">Save & return to menu</button></div>
+    </section>
+    <section id="confirmDialog" class="dialog-backdrop" hidden>
+      <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirmTitle"><p class="kicker">DELETE WORLD</p><h2 id="confirmTitle">Delete this world?</h2><p id="confirmText">This save will be removed from this device.</p><div class="dialog-actions"><button id="cancelDelete" class="button button-ghost">Keep world</button><button id="confirmDelete" class="button button-danger">Delete world</button></div></div>
+    </section>
+  </main>
+  <section id="gameHud" hidden>
+    <div class="hud-top-left"><div class="hud-world"><span class="live-dot"></span><span id="hudWorldName">ISLAND 1</span></div><div id="hudWorldMode" class="hud-sub">PRIVATE WORLD</div></div>
+    <div class="hud-top-right"><div id="playerCount" class="player-count">1 <span>/ 4 PLAYERS</span></div><canvas id="miniMap" width="220" height="220" aria-label="Island map and player position"></canvas></div>
+    <div class="hud-bottom-left"><div class="hud-stat"><span>HEALTH</span><div class="hud-bar"><i id="healthBar"></i></div></div><div class="hud-stat"><span>STAMINA</span><div class="hud-bar"><i id="staminaBar"></i></div></div><div id="heightReadout" class="height-readout">0 m</div></div>
+    <div id="playerNames" class="player-names"></div>
+    <div id="controlsHint" class="controls-hint"><span>W A S D</span> MOVE <i></i><span>SPACE</span> JUMP <i></i><span>SHIFT</span> SPRINT <i></i><span>ESC</span> MENU</div>
+    <div id="mobileControls" class="mobile-controls" hidden><div id="stickBase" class="stick-base"><div id="stickKnob" class="stick-knob"></div></div><button id="jumpButton" class="jump-button">JUMP</button><div class="look-hint">DRAG RIGHT SIDE TO LOOK</div></div>
+
+  </section>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="errorBanner" class="error-banner" hidden></div>
+</body>
+</html>
+
+
+
+
