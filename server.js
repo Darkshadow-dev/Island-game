@@ -25,7 +25,7 @@ function send(ws,value){if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify
 function broadcastPlayers(id){const room=rooms.get(id);if(!room)return;const players=roomPlayers(id);for(const session of room.values())send(session.ws,{type:"players",players});}
 function broadcastMove(id,exceptId,player){const room=rooms.get(id);if(!room)return;for(const [playerId,session] of room)if(playerId!==exceptId)send(session.ws,{type:"move",player});}
 function rejectUpgrade(socket,status,message){socket.write("HTTP/1.1 "+status+"\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\n"+message);socket.destroy();}
-function receivePlayer(session,raw){const p=raw&&typeof raw==="object"?raw:{};const finite=(v,lo,hi,fallback)=>Number.isFinite(Number(v))?Math.max(lo,Math.min(hi,Number(v))):fallback;return {id:session.id,name:cleanName(p.name||session.name),x:finite(p.x,-223500,223500,0),y:finite(p.y,-1200,6500,0),z:finite(p.z,-223500,223500,0),yaw:finite(p.yaw,-100000,100000,0),health:finite(p.health,0,100,100)};}
+function receivePlayer(session,raw){const p=raw&&typeof raw==="object"?raw:{};const finite=(v,lo,hi,fallback)=>Number.isFinite(Number(v))?Math.max(lo,Math.min(hi,Number(v))):fallback;return {id:session.id,name:cleanName(p.name||session.name),x:finite(p.x,-223500,223500,0),y:finite(p.y,-1200,6500,0),z:finite(p.z,-223500,223500,0),yaw:finite(p.yaw,-100000,100000,0),health:finite(p.health,0,100,100),vx:finite(p.vx,-20,20,0),vz:finite(p.vz,-20,20,0)};}
 
 loadStore();
 const server=http.createServer(async(req,res)=>{

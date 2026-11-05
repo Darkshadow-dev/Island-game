@@ -13,7 +13,7 @@
   const defaultData = () => ({version:1,playerId:makeId(),settings:{brightness:108,renderDistance:1400,sfx:true,mobileCap:true},worlds:[null,null,null],shared:{},updatedAt:Date.now()});
   let appData = defaultData(), mapImage = null, mapData = null, mapCtx = null;
   let scene = null, camera = null, renderer = null, terrainMaterial = null, waterMaterial = null;
-  let activeWorld = null, player = null, worldRunning = false, paused = false, serverOnline = false;
+  let activeWorld = null, player = null, playerAvatar = null, worldRunning = false, paused = false, serverOnline = false;
   let renderDistance = 1400, chunkMap = new Map(), chunkQueue = [], remotePlayers = new Map(), socket = null;
   let lastChunkUpdate = 0, saveClock = 0, netClock = 0, footstepClock = 0, toastClock = 0, audioContext = null;
   let settingsReturn = "homeView", deleteSlot = -1, pointerIsLocked = false, mouseDown = false;
@@ -160,18 +160,27 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     const bushes = [];
     const grass = [];
 
+    // Seeded clusters create forests with open clearings between them.
+    const forestPatches = Array.from({ length: 3 + Math.floor(rand() * 3) }, () => ({
+        x: (rand() - 0.5) * CHUNK_M * 0.72,
+        z: (rand() - 0.5) * CHUNK_M * 0.72,
+        radius: 65 + rand() * 85
+    }));
+
 
     // ==========================================
     // 2. RANDOM POSITION GENERATOR
     // ==========================================
 
     function pickPosition(margin) {
-
-        return {
-            x: centerX + (rand() - 0.5) * (CHUNK_M - margin),
-            z: centerZ + (rand() - 0.5) * (CHUNK_M - margin)
-        };
-
+        let x = (rand() - 0.5) * (CHUNK_M - margin);
+        let z = (rand() - 0.5) * (CHUNK_M - margin);
+        if (rand() < 0.76) {
+            const patch = forestPatches[Math.floor(rand() * forestPatches.length)];
+            x = patch.x + (rand() - 0.5) * patch.radius * 2;
+            z = patch.z + (rand() - 0.5) * patch.radius * 2;
+        }
+        return { x: centerX + x, z: centerZ + z };
     }
 
 
@@ -179,7 +188,7 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     // 3. GENERATE TREES
     // ==========================================
 
-    for (let i = 0; i < 105; i++) {
+    for (let i = 0; i < (isMobile() ? 105 : 165); i++) {
 
         const position = pickPosition(40);
         const height = heightAt(position.x, position.z, world.seed);
@@ -221,7 +230,7 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
 
 
         // Randomly determine whether a tree should spawn.
-        if (rand() > 0.45) {
+        if (rand() > 0.34) {
             continue;
         }
 
@@ -233,11 +242,10 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
             y: height / SCALE_M,
             z: (position.z - centerZ) / SCALE_M,
 
-            s: 0.78 + rand() * 0.62+ Math.floor(Math.random() * 1.65),
-
+            s: 0.78 + rand() * 0.72,
+            variant: rand() < 0.34 ? 1 : 0,
             turn: rand() * Math.PI * 2,
-
-            tint: 0.86 + rand() * -0.25
+            tint: 0.86 + rand() * 0.22
 
         });
 
@@ -469,12 +477,12 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     // 10. CREATE TREE LEAVES
     // ==========================================
 
-    for (let layer = 0; layer < 3 + Math.floor(Math.random() * 5); layer++) {
+    for (let layer = 0; layer < 4; layer++) {
 
         addInstances(
             leafGeo,
             leafMat,
-            trees,
+            trees.filter(tree => tree.variant === 0),
 
             (object, tree) => {
 
@@ -503,7 +511,22 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
 
 
     // ==========================================
-    // 11. CREATE BUSHES
+        // Rounded broadleaf canopies add a second forest silhouette.
+    const broadLeafGeo = new THREE.IcosahedronGeometry(0.105, 1);
+    const broadLeafMat = new THREE.MeshStandardMaterial({ color: 0x587747, roughness: 1 });
+    const broadTrees = trees.filter(tree => tree.variant === 1);
+    addInstances(broadLeafGeo, broadLeafMat, broadTrees, (object, tree) => {
+        object.position.set(tree.x, tree.y + 0.17 * tree.s, tree.z);
+        object.rotation.set(0, tree.turn, 0);
+        object.scale.set(tree.s * 1.05, tree.s * 1.15, tree.s * 1.05);
+    });
+    addInstances(broadLeafGeo, broadLeafMat, broadTrees, (object, tree) => {
+        object.position.set(tree.x + Math.sin(tree.turn) * 0.045 * tree.s, tree.y + 0.245 * tree.s, tree.z + Math.cos(tree.turn) * 0.045 * tree.s);
+        object.rotation.set(0, tree.turn + 0.8, 0);
+        object.scale.set(tree.s * 0.78, tree.s * 0.82, tree.s * 0.78);
+    });
+
+// 11. CREATE BUSHES
     // ==========================================
 
     addInstances(
@@ -623,7 +646,14 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     if(player.y<1)player.y=(heightAt(player.x,player.z,world.seed)||0)+1.72;
   }
   function enterWorldObject(world,requestLock){
-    if(!world)return;activeWorld=world;setPlayerFromWorld(world);worldRunning=true;paused=false;
+    if(!world)return;
+    activeWorld=world;
+    setPlayerFromWorld(world);
+    if(playerAvatar&&scene)scene.remove(playerAvatar);
+    playerAvatar=createAvatar(appData.playerId,"You");
+    scene.add(playerAvatar);
+    worldRunning=true;
+    paused=false;
     $("#frontMenu").hidden=true;$("#gameHud").hidden=false;$("#pauseView").hidden=true;$("#mobileControls").hidden=!isMobile();
     $("#hudWorldName").textContent=String(world.name||"ISLAND").toUpperCase();
     $("#hudWorldMode").textContent=world.publicId?"PUBLIC · INVITE LINK":"PRIVATE WORLD · LOCAL SAVE";
@@ -670,7 +700,7 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
   function openSettings(from){settingsReturn=from;openView("settingsView");}
   function openPause(){if(!worldRunning||paused)return;paused=true;worldRunning=false;$("#pauseView").hidden=false;$("#frontMenu").hidden=false;document.querySelectorAll(".menu-view").forEach(v=>v.hidden=v.id!=="pauseView");document.exitPointerLock&&document.exitPointerLock();renderer.domElement.style.cursor="default";}
   function resumeGame(){paused=false;worldRunning=true;$("#frontMenu").hidden=true;if(!isMobile()&&renderer.domElement.requestPointerLock)renderer.domElement.requestPointerLock();}
-  function saveAndReturn(){saveLocal();closeSocket();worldRunning=false;paused=false;document.exitPointerLock&&document.exitPointerLock();$("#gameHud").hidden=true;$("#frontMenu").hidden=false;activeWorld=null;player=null;clearChunks();refreshChunkSet(true);renderWorldSlots();openView("worldsView");}
+  function saveAndReturn(){saveLocal();closeSocket();worldRunning=false;paused=false;document.exitPointerLock&&document.exitPointerLock();$("#gameHud").hidden=true;$("#frontMenu").hidden=false;if(playerAvatar&&scene)scene.remove(playerAvatar);playerAvatar=null;activeWorld=null;player=null;clearChunks();refreshChunkSet(true);renderWorldSlots();openView("worldsView");}
   function quitGame(){if(worldRunning)saveAndReturn();try{window.close();}catch(error){}setTimeout(()=>showToast("You can close this tab to quit."),100);}
   function playSfx(kind){if(!appData.settings.sfx)return;try{if(!audioContext)audioContext=new (window.AudioContext||window.webkitAudioContext)();if(audioContext.state==="suspended")audioContext.resume();const osc=audioContext.createOscillator(),gain=audioContext.createGain();osc.type=kind==="hurt"?"sawtooth":"triangle";osc.frequency.value=kind==="jump"?170:kind==="hurt"?75:95;gain.gain.setValueAtTime(kind==="hurt"?.055:.018,audioContext.currentTime);gain.gain.exponentialRampToValueAtTime(.0001,audioContext.currentTime+.08);osc.connect(gain);gain.connect(audioContext.destination);osc.start();osc.stop(audioContext.currentTime+.085);}catch(error){}}
   let previewWorld=null,previewPos=null,lastPublicSync=0;
@@ -693,17 +723,61 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     const count=isMobile()?1:2;
     for(let i=0;i<count&&chunkQueue.length;i++){const item=chunkQueue.shift();if(chunkMap.has(item.key))continue;try{chunkMap.set(item.key,makeChunk(item.cx,item.cz,item.world));}catch(error){console.error("Chunk build failed",error);}}
   }
-  function createAvatar(id,name){
-    const group=new THREE.Group(),hash=Array.from(String(id)).reduce((a,c)=>(a*33+c.charCodeAt(0))>>>0,5381),hue=(hash%360)/360;
-    const jacket=new THREE.MeshStandardMaterial({color:new THREE.Color().setHSL(hue,.42,.52),roughness:.8}),skin=new THREE.MeshStandardMaterial({color:0xd8c39b,roughness:1}),dark=new THREE.MeshStandardMaterial({color:0x302f2a,roughness:1});
-    const body=new THREE.Mesh(new THREE.CylinderGeometry(.0025,.0034,.009,6),jacket);body.position.y=.009;group.add(body);
-    const head=new THREE.Mesh(new THREE.SphereGeometry(.00225,6,5),skin);head.position.y=.016;group.add(head);
-    const legsGeo=new THREE.BoxGeometry(.0018,.006,.0021);for(let i=0;i<2;i++){const leg=new THREE.Mesh(legsGeo,dark);leg.position.set(i===0?-.0011:.0011,.003,0);group.add(leg);}
-    group.userData.playerName=name||"Explorer";return group;
+  function createAvatar(id, name) {
+    const group = new THREE.Group();
+    const hash = Array.from(String(id)).reduce((a, c) => (a * 33 + c.charCodeAt(0)) >>> 0, 5381);
+    const hue = (hash % 360) / 360;
+    const shirt = new THREE.MeshStandardMaterial({ color: new THREE.Color().setHSL(hue, .48, .43), roughness: .86 });
+    const pants = new THREE.MeshStandardMaterial({ color: 0x303b48, roughness: 1 });
+    const skin = new THREE.MeshStandardMaterial({ color: 0xd9b995, roughness: 1 });
+    const shoes = new THREE.MeshStandardMaterial({ color: 0x24282b, roughness: 1 });
+
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(.0027, .0042, 3, 6), shirt);
+    torso.position.y = .0112;
+    group.add(torso);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(.00205, 10, 8), skin);
+    head.position.y = .0164;
+    group.add(head);
+
+    const armPivots = [];
+    for (let side = -1; side <= 1; side += 2) {
+      const arm = new THREE.Group();
+      arm.position.set(side * .00315, .0134, 0);
+      const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(.00085, .0031, 3, 5), shirt);
+      upperArm.position.y = -.002;
+      arm.add(upperArm);
+      group.add(arm);
+      armPivots.push(arm);
+    }
+
+    const legPivots = [];
+    for (let side = -1; side <= 1; side += 2) {
+      const leg = new THREE.Group();
+      leg.position.set(side * .00105, .0076, 0);
+      const legMesh = new THREE.Mesh(new THREE.CapsuleGeometry(.00095, .0041, 3, 5), pants);
+      legMesh.position.y = -.0027;
+      leg.add(legMesh);
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(.0018, .0011, .003), shoes);
+      shoe.position.set(0, -.0056, -.00045);
+      leg.add(shoe);
+      group.add(leg);
+      legPivots.push(leg);
+    }
+
+    group.userData.playerName = name || "Explorer";
+    group.userData.legPivots = legPivots;
+    group.userData.armPivots = armPivots;
+    return group;
   }
   function updateRemotePlayers(players){
     if(!Array.isArray(players))players=[];const seen=new Set();
-    for(const item of players){if(!item||item.id===appData.playerId)continue;seen.add(item.id);let avatar=remotePlayers.get(item.id);if(!avatar){avatar=createAvatar(item.id,item.name);remotePlayers.set(item.id,avatar);scene.add(avatar);}avatar.userData.playerName=item.name||"Explorer";avatar.position.set(Number(item.x||0)/SCALE_M,(Number(item.y||0)-1.72)/SCALE_M,Number(item.z||0)/SCALE_M);avatar.rotation.y=Number(item.yaw||0);}
+    for(const item of players){if(!item||item.id===appData.playerId)continue;seen.add(item.id);let avatar=remotePlayers.get(item.id);if(!avatar){avatar=createAvatar(item.id,item.name);remotePlayers.set(item.id,avatar);scene.add(avatar);}avatar.userData.playerName=item.name||"Explorer";avatar.position.set(Number(item.x||0)/SCALE_M,(Number(item.y||0)-1.72)/SCALE_M,Number(item.z||0)/SCALE_M);avatar.rotation.y=Number(item.yaw||0);
+      const moving=Number(item.vx||0)!==0||Number(item.vz||0)!==0;
+      const swing=moving?Math.sin(performance.now()*.009)*.48:0;
+      avatar.userData.legPivots?.forEach((leg,index)=>leg.rotation.x=swing*(index===0?1:-1));
+      avatar.userData.armPivots?.forEach((arm,index)=>arm.rotation.x=-swing*(index===0?1:-1)*.7);
+    }
     for(const [id,avatar] of remotePlayers){if(!seen.has(id)){scene.remove(avatar);remotePlayers.delete(id);}}
     const names=Array.from(remotePlayers.values()).map(v=>v.userData.playerName);$("#playerCount").innerHTML=(names.length+1)+' <span>/ 4 PLAYERS</span>';
     $("#playerNames").innerHTML=names.map(name=>'<span class="player-name-chip">'+esc(name)+'</span>').join("");
@@ -714,7 +788,7 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     try{
       const protocol=location.protocol==="https:"?"wss:":"ws:",name="Explorer-"+String(appData.playerId).slice(0,4).toUpperCase(),params=new URLSearchParams({world:world.publicId,player:appData.playerId,name:name});
       const connection=new WebSocket(protocol+"//"+location.host+"/ws?"+params.toString());socket=connection;
-      connection.addEventListener("open",()=>{if(socket!==connection)return;connection.send(JSON.stringify({type:"hello",player:{id:appData.playerId,name:name,x:player.x,y:player.y,z:player.z,yaw:player.yaw,health:player.health}}));});
+      connection.addEventListener("open",()=>{if(socket!==connection)return;connection.send(JSON.stringify({type:"hello",player:{id:appData.playerId,name:name,x:player.x,y:player.y,z:player.z,yaw:player.yaw,health:player.health,vx:player.vx,vz:player.vz}}));});
       connection.addEventListener("message",event=>{if(socket!==connection)return;let message;try{message=JSON.parse(event.data);}catch(error){return;}
         if(message.type==="welcome"){if(message.publicState&&activeWorld)activeWorld.publicState=message.publicState;updateRemotePlayers(message.players||[]);showToast("Connected to public island.");}
         else if(message.type==="players")updateRemotePlayers(message.players||[]);
@@ -725,7 +799,7 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
       connection.addEventListener("error",()=>{if(socket===connection)showToast("World server unavailable. Playing locally.");});
     }catch(error){showToast("Multiplayer could not connect. Playing locally.");}
   }
-  function sendPlayerState(){if(!socket||socket.readyState!==WebSocket.OPEN||!player)return;socket.send(JSON.stringify({type:"move",player:{id:appData.playerId,name:"Explorer-"+String(appData.playerId).slice(0,4).toUpperCase(),x:player.x,y:player.y,z:player.z,yaw:player.yaw,health:player.health}}));}
+  function sendPlayerState(){if(!socket||socket.readyState!==WebSocket.OPEN||!player)return;socket.send(JSON.stringify({type:"move",player:{id:appData.playerId,name:"Explorer-"+String(appData.playerId).slice(0,4).toUpperCase(),x:player.x,y:player.y,z:player.z,yaw:player.yaw,health:player.health,vx:player.vx,vz:player.vz}}));}
   async function syncPublicWorld(){
     if(!activeWorld||!activeWorld.publicId||!activeWorld.ownerKey||!serverOnline||Date.now()-lastPublicSync<15000)return;
     lastPublicSync=Date.now();try{await api("/api/worlds/"+encodeURIComponent(activeWorld.publicId),{method:"PUT",headers:{"content-type":"application/json","x-owner-key":activeWorld.ownerKey},body:JSON.stringify({publicState:activeWorld.publicState||{}})});}catch(error){serverOnline=false;}
@@ -758,14 +832,22 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
       if(event.code==="Space"&&!keyboard.Space&&player)player.jumpQueued=true;keyboard[event.code]=true;
     },{passive:false});
     document.addEventListener("keyup",event=>{keyboard[event.code]=false;});
+    document.addEventListener("contextmenu",event=>{if(worldRunning)event.preventDefault();});
     window.addEventListener("blur",()=>{Object.keys(keyboard).forEach(k=>keyboard[k]=false);touchMove.x=touchMove.y=0;});
     document.addEventListener("pointerlockchange",()=>{pointerIsLocked=document.pointerLockElement===renderer.domElement;if(!pointerIsLocked&&worldRunning)openPause();});
     document.addEventListener("mousemove",event=>{if(pointerIsLocked&&worldRunning)rotateLook(event.movementX,event.movementY);});
     renderer.domElement.addEventListener("click",()=>{if(worldRunning&&!isMobile()&&!pointerIsLocked&&renderer.domElement.requestPointerLock)renderer.domElement.requestPointerLock();});
     renderer.domElement.addEventListener("pointerdown",event=>{
       if(!worldRunning)return;mouseDown=true;
-      if(isMobile()&&event.pointerType==="touch"&&event.clientX>innerWidth*.48){touchLook.id=event.pointerId;touchLook.x=event.clientX;touchLook.y=event.clientY;renderer.domElement.setPointerCapture(event.pointerId);}
-      else if(!isMobile()&&!pointerIsLocked)renderer.domElement.setPointerCapture(event.pointerId);
+      if(isMobile()&&event.pointerType==="touch"&&event.clientX>innerWidth*.46){
+        touchLook.id=event.pointerId;
+        touchLook.x=event.clientX;
+        touchLook.y=event.clientY;
+        renderer.domElement.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      }else if(!isMobile()&&!pointerIsLocked&&event.pointerType==="mouse"){
+        renderer.domElement.setPointerCapture(event.pointerId);
+      }
     });
     renderer.domElement.addEventListener("pointermove",event=>{
       if(!worldRunning)return;
@@ -775,6 +857,7 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     const endLook=event=>{mouseDown=false;if(touchLook.id===event.pointerId)touchLook.id=null;};
     renderer.domElement.addEventListener("pointerup",endLook);renderer.domElement.addEventListener("pointercancel",endLook);
     const base=$("#stickBase"),knob=$("#stickKnob");let stickId=null;
+    base.addEventListener("contextmenu",event=>event.preventDefault());
     const updateStick=event=>{const rect=base.getBoundingClientRect(),cx=rect.left+rect.width/2,cy=rect.top+rect.height/2,max=rect.width*.37;let x=(event.clientX-cx)/max,y=(event.clientY-cy)/max,len=Math.hypot(x,y);if(len>1){x/=len;y/=len;}touchMove.x=x;touchMove.y=y;knob.style.left=(50+x*37)+"%";knob.style.top=(50+y*37)+"%";};
     base.addEventListener("pointerdown",event=>{stickId=event.pointerId;base.setPointerCapture(stickId);updateStick(event);event.preventDefault();});
     base.addEventListener("pointermove",event=>{if(stickId===event.pointerId)updateStick(event);});
@@ -813,9 +896,15 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     const len=Math.hypot(forward,side);if(len>1){forward/=len;side/=len;}
     const sin=Math.sin(player.yaw),cos=Math.cos(player.yaw),wishX=forward*sin+side*cos,wishZ=-forward*cos+side*sin;
     const sprint=(keyboard.ShiftLeft||keyboard.ShiftRight)&&len>.1&&player.stamina>1;
-    const speed=sprint?9.2:4.6,accel=player.grounded?15:4.6;
-    player.vx+=clamp(wishX*speed-player.vx,-accel*dt,accel*dt);player.vz+=clamp(wishZ*speed-player.vz,-accel*dt,accel*dt);
-    if(len<.08){const drag=player.grounded?10:1.2;player.vx*=Math.max(0,1-drag*dt);player.vz*=Math.max(0,1-drag*dt);}
+    const speed=sprint?10.2:6.0;
+    const accel=player.grounded?24:8;
+    player.vx+=clamp(wishX*speed-player.vx,-accel*dt,accel*dt);
+    player.vz+=clamp(wishZ*speed-player.vz,-accel*dt,accel*dt);
+    if(len<.08){
+      const drag=player.grounded?17:2.2;
+      player.vx*=Math.max(0,1-drag*dt);
+      player.vz*=Math.max(0,1-drag*dt);
+    }
     if(sprint)player.stamina=Math.max(0,player.stamina-19*dt);else player.stamina=Math.min(100,player.stamina+12*dt);
     const wasGrounded=player.grounded;
     if(player.jumpQueued&&player.grounded){player.vy=6.3;player.grounded=false;player.stamina=Math.max(0,player.stamina-5);playSfx("jump");}
@@ -831,8 +920,22 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     const moving=Math.hypot(player.vx,player.vz)>.7&&player.grounded;
     if(moving){footstepClock-=dt;if(footstepClock<=0){playSfx("step");footstepClock=sprint ? .31 : .52;}}
     else footstepClock=0;
-    const bob=moving?Math.sin(performance.now()*.012)*(sprint?.0011:.00065):0;
-    camera.position.set(player.x/SCALE_M,(player.y/SCALE_M)+bob,player.z/SCALE_M);camera.rotation.set(player.pitch,player.yaw,0,"YXZ");
+    const walkPhase=performance.now()*.009*(sprint?1.35:1);
+    const swing=moving?Math.sin(walkPhase)*.48:0;
+    if(playerAvatar){
+      playerAvatar.position.set(player.x/SCALE_M,(player.y-1.72)/SCALE_M,player.z/SCALE_M);
+      playerAvatar.rotation.y=player.yaw;
+      playerAvatar.userData.legPivots.forEach((leg,index)=>leg.rotation.x=swing*(index===0?1:-1));
+      playerAvatar.userData.armPivots.forEach((arm,index)=>arm.rotation.x=-swing*(index===0?1:-1)*.7);
+    }
+    // Third-person follow camera: keep the complete character visible.
+    const cameraDistance=.042,cameraHeight=.021;
+    camera.position.set(
+      player.x/SCALE_M-Math.sin(player.yaw)*cameraDistance,
+      (player.y-1.72)/SCALE_M+cameraHeight,
+      player.z/SCALE_M+Math.cos(player.yaw)*cameraDistance
+    );
+    camera.rotation.set(player.pitch,player.yaw,0,"YXZ");
     const groundHeight=heightAt(player.x,player.z,activeWorld.seed);$("#heightReadout").textContent=Math.max(0,Math.round(groundHeight||0)).toLocaleString()+" m";
     $("#healthBar").style.width=player.health+"%";$("#staminaBar").style.width=player.stamina+"%";
     saveClock+=dt;netClock+=dt;
@@ -852,7 +955,7 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
     if(!window.THREE){showError("Three.js did not load. Connect to the internet and reload to play.");$("#startButton").disabled=true;$("#startButton").textContent="3D engine unavailable";return;}
     try{
       scene=new THREE.Scene();scene.background=new THREE.Color(0x9ead9f);scene.fog=new THREE.Fog(0x9ead9f,4,16);
-      camera=new THREE.PerspectiveCamera(74,innerWidth/innerHeight,.001,30);camera.rotation.order="YXZ";
+      camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.001,30);camera.rotation.order="YXZ";
       renderer=new THREE.WebGLRenderer({antialias:!isMobile(),alpha:false,powerPreference:"high-performance"});renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.shadowMap.enabled=false;
       $("#scene").appendChild(renderer.domElement);
       scene.add(new THREE.HemisphereLight(0xe6f0dc,0x465446,1.55));const sunlight=new THREE.DirectionalLight(0xffe8bf,2.15);sunlight.position.set(-70,100,-35);scene.add(sunlight);
@@ -865,9 +968,6 @@ function createFoliage(parent, centerX, centerZ, world, cx, cz) {
   }
   bootstrap();
 })();
-
-
-
 
 
 
