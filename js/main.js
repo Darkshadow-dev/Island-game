@@ -143,33 +143,433 @@
     const variation=1+.035*Math.sin(x*.0017+z*.0011);
     c.multiplyScalar(variation);return c;
   }
-  function createFoliage(parent,centerX,centerZ,world,cx,cz){
-    const rand=seedRandom((Number(world.seed)||1)+cx*73856093+cz*19349663),trees=[],bushes=[],grass=[];
-    const pick=(margin)=>({x:centerX+(rand()-.5)*(CHUNK_M-margin),z:centerZ+(rand()-.5)*(CHUNK_M-margin)});
-    for(let n=0;n<105;n++){
-      const p=pick(40),h=heightAt(p.x,p.z,world.seed);if(h==null||h<90||h>2900)continue;
-      const h1=heightAt(p.x+50,p.z,world.seed),h2=heightAt(p.x-50,p.z,world.seed),h3=heightAt(p.x,p.z+50,world.seed),h4=heightAt(p.x,p.z-50,world.seed);
-      if(h1==null||h2==null||h3==null||h4==null||Math.max(Math.abs(h1-h),Math.abs(h2-h),Math.abs(h3-h),Math.abs(h4-h))>340)continue;
-      if(rand()>.45)continue;
-      trees.push({x:(p.x-centerX)/SCALE_M,y:h/SCALE_M,z:(p.z-centerZ)/SCALE_M,s:.78+rand()*.62,turn:rand()*Math.PI*2,tint:.86+rand()*.25});
+
+function createFoliage(parent, centerX, centerZ, world, cx, cz) {
+
+    // ==========================================
+    // 1. RANDOM GENERATOR AND OBJECT COLLECTIONS
+    // ==========================================
+
+    const seed = (Number(world.seed) || 1)
+        + cx * 73856093
+        + cz * 19349663;
+
+    const rand = seedRandom(seed);
+
+    const trees = [];
+    const bushes = [];
+    const grass = [];
+
+
+    // ==========================================
+    // 2. RANDOM POSITION GENERATOR
+    // ==========================================
+
+    function pickPosition(margin) {
+
+        return {
+            x: centerX + (rand() - 0.5) * (CHUNK_M - margin),
+            z: centerZ + (rand() - 0.5) * (CHUNK_M - margin)
+        };
+
     }
-    for(let n=0;n<50;n++){
-      const p=pick(16),h=heightAt(p.x,p.z,world.seed);if(h==null||h<20||h>3400||rand()>.58)continue;
-      bushes.push({x:(p.x-centerX)/SCALE_M,y:h/SCALE_M,z:(p.z-centerZ)/SCALE_M,s:.65+rand()*.65,turn:rand()*6.28});
+
+
+    // ==========================================
+    // 3. GENERATE TREES
+    // ==========================================
+
+    for (let i = 0; i < 105; i++) {
+
+        const position = pickPosition(40);
+        const height = heightAt(position.x, position.z, world.seed);
+
+        // Check whether the terrain is suitable.
+        if (height === null || height < 90 || height > 2900) {
+            continue;
+        }
+
+
+        // Check the surrounding terrain for steep slopes.
+        const north = heightAt(position.x, position.z - 50, world.seed);
+        const south = heightAt(position.x, position.z + 50, world.seed);
+        const east = heightAt(position.x + 50, position.z, world.seed);
+        const west = heightAt(position.x - 50, position.z, world.seed);
+
+        // Reject positions near water or invalid terrain.
+        if (
+            north === null ||
+            south === null ||
+            east === null ||
+            west === null
+        ) {
+            continue;
+        }
+
+
+        // Calculate the largest nearby height difference.
+        const slopeDifference = Math.max(
+            Math.abs(north - height),
+            Math.abs(south - height),
+            Math.abs(east - height),
+            Math.abs(west - height)
+        );
+
+        if (slopeDifference > 340) {
+            continue;
+        }
+
+
+        // Randomly determine whether a tree should spawn.
+        if (rand() > 0.45) {
+            continue;
+        }
+
+
+        // Store the tree's position and appearance.
+        trees.push({
+
+            x: (position.x - centerX) / SCALE_M,
+            y: height / SCALE_M,
+            z: (position.z - centerZ) / SCALE_M,
+
+            s: 0.78 + rand() * 0.62+ Math.floor(Math.random() * 1.65),
+
+            turn: rand() * Math.PI * 2,
+
+            tint: 0.86 + rand() * -0.25
+
+        });
+
     }
-    for(let n=0;n<100;n++){
-      const p=pick(12),h=heightAt(p.x,p.z,world.seed);if(h==null||h<20||h>2500||rand()>.48)continue;
-      grass.push({x:(p.x-centerX)/SCALE_M,y:h/SCALE_M,z:(p.z-centerZ)/SCALE_M,s:.6+rand()*.9,turn:rand()*6.28});
+
+
+    // ==========================================
+    // 4. GENERATE BUSHES
+    // ==========================================
+
+    for (let i = 0; i < 50; i++) {
+
+        const position = pickPosition(16);
+        const height = heightAt(position.x, position.z, world.seed);
+
+        // Check terrain height and spawn probability.
+        if (
+            height === null ||
+            height < 20 ||
+            height > 3400 ||
+            rand() > 0.58
+        ) {
+            continue;
+        }
+
+
+        // Store bush properties.
+        bushes.push({
+
+            x: (position.x - centerX) / SCALE_M,
+            y: height / SCALE_M,
+            z: (position.z - centerZ) / SCALE_M,
+
+            s: 0.65 + rand() * 0.65,
+
+            turn: rand() * Math.PI * 2
+
+        });
+
     }
-    const dummy=new THREE.Object3D();
-    function addInstances(geometry,material,items,place){if(!items.length)return;const mesh=new THREE.InstancedMesh(geometry,material,items.length);mesh.frustumCulled=true;items.forEach((item,i)=>{place(dummy,item);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);if(item.tint&&mesh.setColorAt)mesh.setColorAt(i,new THREE.Color(item.tint,item.tint,item.tint));});mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;parent.add(mesh);}
-    const trunkMat=new THREE.MeshStandardMaterial({color:0x574838,roughness:1}),leafMat=new THREE.MeshStandardMaterial({color:0x536c42,roughness:1}),bushMat=new THREE.MeshStandardMaterial({color:0x637d4b,roughness:1}),grassMat=new THREE.MeshStandardMaterial({color:0x81904f,roughness:1,side:THREE.DoubleSide});
-    const trunkGeo=new THREE.CylinderGeometry(.018,.031,.07,5),leafGeo=new THREE.ConeGeometry(.12,.15,5),bushGeo=new THREE.IcosahedronGeometry(.017,0),grassGeo=new THREE.ConeGeometry(.0035,.012,3);
-    addInstances(trunkGeo,trunkMat,trees,(o,t)=>{o.position.set(t.x,t.y+.035*t.s,t.z);o.rotation.set(0,t.turn,0);o.scale.set(t.s,t.s,t.s);});
-    for(let layer=0;layer<3;layer++)addInstances(leafGeo,leafMat,trees,(o,t)=>{o.position.set(t.x,t.y+(.085+layer*.056)*t.s,t.z);o.rotation.set(0,t.turn+layer*.8,0);o.scale.set(t.s*(1-layer*.14),t.s*(1-layer*.04),t.s*(1-layer*.14));});
-    addInstances(bushGeo,bushMat,bushes,(o,b)=>{o.position.set(b.x,b.y+.012*b.s,b.z);o.rotation.set(0,b.turn,0);o.scale.set(b.s,b.s*.72,b.s);});
-    addInstances(grassGeo,grassMat,grass,(o,g)=>{o.position.set(g.x,g.y+.006*g.s,g.z);o.rotation.set(0,g.turn,0);o.scale.set(g.s,g.s,g.s);});
-  }
+
+
+    // ==========================================
+    // 5. GENERATE GRASS
+    // ==========================================
+
+    for (let i = 0; i < 400; i++) {
+
+        const position = pickPosition(12);
+        const height = heightAt(position.x, position.z, world.seed);
+
+        // Check terrain height and spawn probability.
+        if (
+            height === null ||
+            height < 20 ||
+            height > 2500 ||
+            rand() > 0.48
+        ) {
+            continue;
+        }
+
+
+        // Store grass properties.
+        grass.push({
+
+            x: (position.x - centerX) / SCALE_M,
+            y: height / SCALE_M,
+            z: (position.z - centerZ) / SCALE_M,
+
+            s: 0.6 + rand() * 0.9,
+
+            turn: rand() * Math.PI * 2
+
+        });
+
+    }
+
+
+    // ==========================================
+    // 6. SHARED INSTANCE HELPER
+    // ==========================================
+
+    const dummy = new THREE.Object3D();
+
+    function addInstances(geometry, material, items, place) {
+
+        if (items.length === 0) {
+            return;
+        }
+
+        const mesh = new THREE.InstancedMesh(
+            geometry,
+            material,
+            items.length
+        );
+
+        mesh.frustumCulled = true;
+
+
+        // Position and configure every instance.
+        items.forEach((item, index) => {
+
+            place(dummy, item);
+
+            dummy.updateMatrix();
+
+            mesh.setMatrixAt(index, dummy.matrix);
+
+
+            // Apply individual colour variations.
+            if (item.tint && mesh.setColorAt) {
+
+                mesh.setColorAt(
+                    index,
+                    new THREE.Color(
+                        item.tint,
+                        item.tint,
+                        item.tint
+                    )
+                );
+
+            }
+
+        });
+
+
+        // Update GPU instance data.
+        mesh.instanceMatrix.needsUpdate = true;
+
+        if (mesh.instanceColor) {
+            mesh.instanceColor.needsUpdate = true;
+        }
+
+
+        parent.add(mesh);
+
+    }
+
+
+    // ==========================================
+    // 7. MATERIALS
+    // ==========================================
+
+    const trunkMat = new THREE.MeshStandardMaterial({
+        color: 0x574838,
+        roughness: 1
+    });
+
+    const leafMat = new THREE.MeshStandardMaterial({
+        color: 0x536c42,
+        roughness: 1
+    });
+
+    const bushMat = new THREE.MeshStandardMaterial({
+        color: 0x637d4b,
+        roughness: 1
+    });
+
+    const grassMat = new THREE.MeshStandardMaterial({
+        color: 0x81904f,
+        roughness: 1,
+        side: THREE.DoubleSide
+    });
+
+
+    // ==========================================
+    // 8. GEOMETRY
+    // ==========================================
+
+    const trunkGeo = new THREE.CylinderGeometry(
+        0.018,
+        0.051,
+        0.07,
+        5
+    );
+
+    const leafGeo = new THREE.ConeGeometry(
+        0.12,
+        0.15,
+        5
+    );
+
+    const bushGeo = new THREE.IcosahedronGeometry(
+        0.017,
+        0
+    );
+
+    const grassGeo = new THREE.ConeGeometry(
+        0.0005,
+        0.032,
+        2
+    );
+
+
+    // ==========================================
+    // 9. CREATE TREE TRUNKS
+    // ==========================================
+
+    addInstances(
+        trunkGeo,
+        trunkMat,
+        trees,
+
+        (object, tree) => {
+
+            object.position.set(
+                tree.x,
+                tree.y + 0.035 * tree.s,
+                tree.z
+            );
+
+            object.rotation.set(
+                0,
+                tree.turn,
+                0
+            );
+
+            object.scale.set(
+                tree.s,
+                tree.s,
+                tree.s
+            );
+
+        }
+    );
+
+
+    // ==========================================
+    // 10. CREATE TREE LEAVES
+    // ==========================================
+
+    for (let layer = 0; layer < 3 + Math.floor(Math.random() * 5); layer++) {
+
+        addInstances(
+            leafGeo,
+            leafMat,
+            trees,
+
+            (object, tree) => {
+
+                object.position.set(
+                    tree.x,
+                    tree.y + (0.085 + layer * 0.056) * tree.s,
+                    tree.z
+                );
+
+                object.rotation.set(
+                    0,
+                    tree.turn + layer * 0.8,
+                    0
+                );
+
+                object.scale.set(
+                    tree.s * (1 - layer * 0.14),
+                    tree.s * (1 - layer * 0.04),
+                    tree.s * (1 - layer * 0.14)
+                );
+
+            }
+        );
+
+    }
+
+
+    // ==========================================
+    // 11. CREATE BUSHES
+    // ==========================================
+
+    addInstances(
+        bushGeo,
+        bushMat,
+        bushes,
+
+        (object, bush) => {
+
+            object.position.set(
+                bush.x,
+                bush.y + 0.012 * bush.s,
+                bush.z
+            );
+
+            object.rotation.set(
+                0,
+                bush.turn,
+                0
+            );
+
+            object.scale.set(
+                bush.s,
+                bush.s * 0.72+Math.floor(Math.random() * 0.23),
+                bush.s
+            );
+
+        }
+    );
+
+
+    // ==========================================
+    // 12. CREATE GRASS
+    // ==========================================
+
+    addInstances(
+        grassGeo,
+        grassMat,
+        grass,
+
+        (object, blade) => {
+
+            object.position.set(
+                blade.x,
+                blade.y + 0.006 * blade.s,
+                blade.z
+            );
+
+            object.rotation.set(
+                0,
+                blade.turn,
+                0
+            );
+
+            object.scale.set(
+                blade.s,
+                blade.s,
+                blade.s
+            );
+
+        }
+    );
+
+}
+
+
   function makeChunk(cx,cz,world){
     const startX=-HALF_M+cx*CHUNK_M,startZ=-HALF_M+cz*CHUNK_M,centerX=startX+CHUNK_M/2,centerZ=startZ+CHUNK_M/2;
     const positions=[],colors=[],indices=[],heights=new Float32Array((CHUNK_SEGMENTS+1)*(CHUNK_SEGMENTS+1));
@@ -413,7 +813,7 @@
     const len=Math.hypot(forward,side);if(len>1){forward/=len;side/=len;}
     const sin=Math.sin(player.yaw),cos=Math.cos(player.yaw),wishX=forward*sin+side*cos,wishZ=-forward*cos+side*sin;
     const sprint=(keyboard.ShiftLeft||keyboard.ShiftRight)&&len>.1&&player.stamina>1;
-    const speed=sprint?9.2:4.8,accel=player.grounded?15:4.6;
+    const speed=sprint?9.2:4.6,accel=player.grounded?15:4.6;
     player.vx+=clamp(wishX*speed-player.vx,-accel*dt,accel*dt);player.vz+=clamp(wishZ*speed-player.vz,-accel*dt,accel*dt);
     if(len<.08){const drag=player.grounded?10:1.2;player.vx*=Math.max(0,1-drag*dt);player.vz*=Math.max(0,1-drag*dt);}
     if(sprint)player.stamina=Math.max(0,player.stamina-19*dt);else player.stamina=Math.min(100,player.stamina+12*dt);
@@ -427,7 +827,7 @@
       player.y=nextFloor+1.72;player.vy=0;player.grounded=true;
     }else player.grounded=false;
     if(player.y<OCEAN_FLOOR_M+15){player.health=Math.max(0,player.health-20);player.x=player.spawnX;player.z=player.spawnZ;player.y=(heightAt(player.x,player.z,activeWorld.seed)||0)+1.72;player.vx=player.vy=player.vz=0;showToast("You fell beyond the island. Returned to your starting shore.");}
-    if(player.health<=0){player.health=100;player.x=player.spawnX;player.z=player.spawnZ;player.y=(heightAt(player.x,player.z,activeWorld.seed)||0)+1.72;player.vx=player.vy=player.vz=0;showToast("You recovered at your starting shore.");}
+    if(player.health<=-0){player.health=100;player.x=player.spawnX;player.z=player.spawnZ;player.y=(heightAt(player.x,player.z,activeWorld.seed)||0)+1.72;player.vx=player.vy=player.vz=0;showToast("You recovered at your starting shore.");}
     const moving=Math.hypot(player.vx,player.vz)>.7&&player.grounded;
     if(moving){footstepClock-=dt;if(footstepClock<=0){playSfx("step");footstepClock=sprint ? .31 : .52;}}
     else footstepClock=0;
@@ -465,6 +865,10 @@
   }
   bootstrap();
 })();
+
+
+
+
 
 
 
